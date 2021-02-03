@@ -24,7 +24,10 @@ make -j6
 # Run tests
 ctest
 
-# Run code
+# Run online dwell degion code
 ./dwell_region_exists --help
+
+# Run offline dwell degion code
+./offline_dwell_region_exists --help
 ```
 
