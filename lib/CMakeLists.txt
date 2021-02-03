@@ -2,8 +2,11 @@
 
 set(DWELL_REGION_LIBRARY_SOURCES dwell_region_computation_base.cpp
 								online_dwell_region_computation.cpp
-								offline_dwell_region_index.cpp
-								offline_dwell_region_query.cpp
+								offline_dwell_region_rho_index.cpp
+								offline_dwell_region_query_rho_index.cpp
+								offline_dwell_region_tau_index.cpp
+								offline_dwell_region_query_tau_index.cpp
+								offline_dwell_region_query_no_index.cpp
 								point.cpp
 								disk.cpp
 								util.cpp)

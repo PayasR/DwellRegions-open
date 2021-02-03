@@ -8,7 +8,8 @@
 #include <string>
 
 void
-process_offline_dwell_region_queries(std::filesystem::path filename,
+process_offline_dwell_region_queries_using_rho_index(
+                                  std::filesystem::path filename,
                                   unsigned max_window_size,
                                   unsigned num_heaps,
                                   double query_radius,
@@ -17,8 +18,8 @@ process_offline_dwell_region_queries(std::filesystem::path filename,
                                   bool create_index,
                                   std::string perf_filepath)
 {
-  using DwellRegions::OfflineDwellRegionIndex;
-  using DwellRegions::OfflineDwellRegionQuery;
+  using DwellRegions::OfflineDwellRegionRhoIndex;
+  using DwellRegions::OfflineDwellRegionQueryRhoIndex;
 
   std::ofstream perf_file;
   if (perf_filepath != "") {
@@ -26,7 +27,7 @@ process_offline_dwell_region_queries(std::filesystem::path filename,
   }
 
   if (create_index) {
-    OfflineDwellRegionIndex Offline_DRC_index(num_heaps, num_bins);
+    OfflineDwellRegionRhoIndex Offline_DRC_index(num_heaps, num_bins);
     Offline_DRC_index.preprocess_trajectory_dataset(filename, data_path);
 
     if (perf_file.is_open()) {
@@ -38,7 +39,52 @@ process_offline_dwell_region_queries(std::filesystem::path filename,
   // If indexes exist, execute offline dwell region queries
   bool execute_query = create_index ? false : true;
   if (execute_query) {
-    OfflineDwellRegionQuery Offline_DRC_query(
+    OfflineDwellRegionQueryRhoIndex Offline_DRC_query(
+              num_heaps, max_window_size, query_radius, num_bins, data_path);
+    Offline_DRC_query.execute_dwell_region_query();
+
+    if (perf_file.is_open()) {
+      perf_file << num_heaps << "\t" << num_bins << "\t" << query_radius << "\t"
+                << Offline_DRC_query.get_num_dwell_regions() << "\t"
+                << Offline_DRC_query.get_execution_time() << std::endl;
+      perf_file.close();
+    }
+  }
+}
+
+void
+process_offline_dwell_region_queries_using_tau_index(
+                                  std::filesystem::path filename,
+                                  unsigned max_window_size,
+                                  unsigned num_heaps,
+                                  double query_radius,
+                                  unsigned num_bins,
+                                  std::string data_path,
+                                  bool create_index,
+                                  std::string perf_filepath)
+{
+  using DwellRegions::OfflineDwellRegionTauIndex;
+  using DwellRegions::OfflineDwellRegionQueryTauIndex;
+
+  std::ofstream perf_file;
+  if (perf_filepath != "") {
+    perf_file.open(perf_filepath, std::fstream::app);
+  }
+
+  if (create_index) {
+    OfflineDwellRegionTauIndex Offline_DRC_index(num_heaps, num_bins);
+    Offline_DRC_index.preprocess_trajectory_dataset(filename, data_path);
+
+    if (perf_file.is_open()) {
+      perf_file << num_heaps << "\t" << num_bins << "\t" << Offline_DRC_index.get_preprocess_time() << std::endl;
+      perf_file.close();
+    }
+  }
+
+  // If indexes exist, execute offline dwell region queries
+  bool execute_query = create_index ? false : true;
+  if (execute_query) {
+    OfflineDwellRegionQueryTauIndex Offline_DRC_query(
               num_heaps, max_window_size, query_radius, num_bins, data_path);
     Offline_DRC_query.execute_dwell_region_query();
 
@@ -59,8 +105,7 @@ test_offline_dwell_region_queries(unsigned max_window_size,
                                   std::string data_path,
                                   std::string perf_filepath)
 {
-  using DwellRegions::OfflineDwellRegionIndex;
-  using DwellRegions::OfflineDwellRegionQuery;
+  using DwellRegions::OfflineDwellRegionQueryNoIndex;
 
   std::ofstream perf_file;
   if (perf_filepath != "") {
@@ -68,8 +113,8 @@ test_offline_dwell_region_queries(unsigned max_window_size,
   }
 
   size_t num_trajectories = 9;
-  OfflineDwellRegionQuery Offline_DRC_query(
-            num_heaps, max_window_size, query_radius, num_bins, data_path);
+  OfflineDwellRegionQueryNoIndex Offline_DRC_query(
+            num_heaps, max_window_size, query_radius, data_path);
   
   auto start = clock();
   for (size_t i = 0; i < num_trajectories; i++) {
@@ -96,7 +141,8 @@ main(int argc, char** argv)
 
   unsigned max_window_size = 0, num_heaps = 0, num_bins = 0;
   double query_radius = 0.0;
-  bool create_index = false, test_query = false;
+  bool create_index = false;
+  size_t index_type = 2; // 0 = No index, 1 = Rho-Index, 2 = Tau-Index
   std::string perf_filepath = "";
   // std::string filename = "";
 
@@ -106,7 +152,7 @@ main(int argc, char** argv)
     "query_radius,q", po::value<double>(&query_radius)->default_value(0.5), "Query Radius (Rq)")(
     "num_bins,b", po::value<unsigned>(&num_bins)->default_value(3), "Number of bins")(
     "create_index,i", po::value<bool>(&create_index)->default_value(false), "Want to create index? yes->true")(
-    "test_offline_query,t", po::value<bool>(&test_query)->default_value(false), "Want to test offline query? yes->true")(
+    "index_type,t", po::value<size_t>(&index_type)->default_value(2), "Index type: 0 = No index, 1 = Rho-Index, 2 = Tau-Index")(
     "performance_file,o", po::value<std::string>(&perf_filepath)->default_value(""), "Output the offline query performance")(
     "help,h", "Print usage");
 
@@ -133,14 +179,23 @@ main(int argc, char** argv)
   auto filename_path = std::filesystem::path(filename);
   std::cout << "Opening " << filename << std::endl;
 
-  if (test_query) {
+  if (index_type == 0) { // NO index, i.e., test queries
     test_offline_dwell_region_queries(max_window_size,
                                       num_heaps, query_radius,
                                       num_bins, data_path,
                                       perf_filepath);
   }
-  else {
-    process_offline_dwell_region_queries(filename_path,
+  else if (index_type == 1) { // Rho-Index
+    process_offline_dwell_region_queries_using_rho_index(
+                                      filename_path,
+                                      max_window_size,
+                                      num_heaps, query_radius,
+                                      num_bins, data_path,
+                                      create_index, perf_filepath);
+  }
+  else { // Tau-Index, this is the default one
+    process_offline_dwell_region_queries_using_tau_index(
+                                      filename_path,
                                       max_window_size,
                                       num_heaps, query_radius,
                                       num_bins, data_path,

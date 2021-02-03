@@ -14,7 +14,7 @@
 namespace {
 void
 find_distinct_subtrajectory_entries(
-  std::vector<DwellRegions::OfflineDwellRegionQuery::ResultSubtrajectoryEntry>& subtraj_entries)
+  std::vector<DwellRegions::OfflineDwellRegionQueryRhoIndex::ResultSubtrajectoryEntry>& subtraj_entries)
 {
   for (size_t i = 0; i < (subtraj_entries.size() - 1); i++) {
     if (subtraj_entries[i].last_index == subtraj_entries[i + 1].last_index) {
@@ -58,7 +58,7 @@ namespace DwellRegions {
 // Prepare and setup the bins of different radii
 // based on the number of radii bins
 void
-OfflineDwellRegionQuery::prepare_radii_bins()
+OfflineDwellRegionQueryRhoIndex::prepare_radii_bins()
 {
   double width_of_radii_bins = (max_radius - min_radius) / (num_radii_bins - 1);
   double radius = min_radius;
@@ -69,10 +69,10 @@ OfflineDwellRegionQuery::prepare_radii_bins()
 }
 
 void
-OfflineDwellRegionQuery::read_indexed_radii_bin(size_t radius_index)
+OfflineDwellRegionQueryRhoIndex::read_indexed_radii_bin(size_t radius_index)
 {
   int current_radius_bin = (int) (radii_bins[radius_index] * 10.0 + 0.5);
-  std::string index_string = data_path + "Index/" + std::to_string(num_radii_bins) + "_bins/" +
+  std::string index_string = data_path + "Rho_Index/" + std::to_string(num_radii_bins) + "_bins/" +
                             "radius_" + std::to_string(current_radius_bin) +
                             "_k_" + std::to_string(num_heaps) + ".txt";
   auto index_filename = std::filesystem::path(index_string);
@@ -96,8 +96,8 @@ OfflineDwellRegionQuery::read_indexed_radii_bin(size_t radius_index)
 
 // Shorten subtrajectories to compute the dwell regions
 // those satisfy the query parameters to compute dwell regions
-std::vector<OfflineDwellRegionQuery::ResultSubtrajectoryEntry>
-OfflineDwellRegionQuery::shorten_subtrajs_to_compute_dwell_regions(size_t traj_id, size_t time_idx)
+std::vector<OfflineDwellRegionQueryRhoIndex::ResultSubtrajectoryEntry>
+OfflineDwellRegionQueryRhoIndex::shorten_subtrajs_to_compute_dwell_regions(size_t traj_id, size_t time_idx)
 {
   // size_t num_dwell_regions = 0;
   std::vector<ResultSubtrajectoryEntry> subtrajs_for_results;
@@ -217,8 +217,8 @@ OfflineDwellRegionQuery::shorten_subtrajs_to_compute_dwell_regions(size_t traj_i
 
 // Extend subtrajectories to compute the dwell regions
 // those satisfy the query parameters to compute dwell regions
-std::vector<OfflineDwellRegionQuery::ResultSubtrajectoryEntry>
-OfflineDwellRegionQuery::extend_subtrajs_to_compute_dwell_regions(size_t traj_id, size_t time_idx)
+std::vector<OfflineDwellRegionQueryRhoIndex::ResultSubtrajectoryEntry>
+OfflineDwellRegionQueryRhoIndex::extend_subtrajs_to_compute_dwell_regions(size_t traj_id, size_t time_idx)
 {
   // size_t num_dwell_regions = 0;
   std::vector<ResultSubtrajectoryEntry> subtrajs_for_results;
@@ -371,7 +371,7 @@ OfflineDwellRegionQuery::extend_subtrajs_to_compute_dwell_regions(size_t traj_id
 // Execute the dwell region query using the preprocessed radii bins
 // and get the dwell regions for the dwell region query
 void
-OfflineDwellRegionQuery::execute_dwell_region_query()
+OfflineDwellRegionQueryRhoIndex::execute_dwell_region_query()
 {
   // Note 3: Radii_bins quadrants according to the journal paper (Figure 11)
   //    NW   |   NE
@@ -401,7 +401,7 @@ OfflineDwellRegionQuery::execute_dwell_region_query()
     equal_to_bin_radius = true;
     radius_index = index;
   } else if (index < (radii_bins.size() - 1)) {
-    // This is a heuristic not in the paper yet. We extend the smaller bin or shorten the larger bin
+    // This is a heuristic. We extend the smaller bin or shorten the larger bin
     // Depending on how close the query radius is to the radii of the two bins.
     // HEURISTIC: Shorten the larger bin if query radius is closer to the larger bin.
     auto diff_with_left_radius = std::fabs(radii_bins[index] - query_radius);
@@ -432,7 +432,6 @@ OfflineDwellRegionQuery::execute_dwell_region_query()
       break;
   }
   auto duration_index = index;
-  // std::cout << radius_index << " " << duration_index << std::endl;
 
   size_t num_dwell_regions = 0;
   //-------------------------CASE 1: No subtrajectories satisfy the query-----------------------
@@ -491,91 +490,6 @@ OfflineDwellRegionQuery::execute_dwell_region_query()
               << ", Last index: " << entry.last_index << ", actual radius: " << entry.actual_disk_radius
               << ", time window: " << entry.time_window << std::endl;
   }
-}
-
-//-----------------------------------------TEST OFFLINE DWELL REGION QUERY---------------------------------------------
-void
-OfflineDwellRegionQuery::test_offline_query_per_traj(size_t traj_id)
-{
-  DwellRegions::Trajectory traj;
-  std::string file = data_path + "GeoLifeDataByID/" + std::to_string(traj_id) + ".txt";
-  auto filename = std::filesystem::path(file);
-
-  read_trajectory(&traj, filename);
-  directional_heaps.clear();
-  for (size_t i = 0; i < num_heaps; i++) {
-    directional_heaps.emplace_back(MaxIDQueue<double>(traj.size()));
-  }
-
-  size_t counter = 0;
-  size_t last_entry_idx = 0;
-  // Iterate over the trajcetory starting from start_idx
-  for (size_t start_idx = 0; start_idx < (traj.size() - 1); start_idx++) {
-    // Initialization for current iteration
-    size_t current_time_window = 0;
-    for (size_t i = 0; i < num_heaps; i++) {
-      directional_heaps[i].clear();
-    }
-
-    for (size_t i = start_idx; i < traj.size(); i++) {
-      auto point = traj.at(i);
-      for (size_t j = 0; j < num_heaps; j++) {
-        auto theta = j * angle_between_heaps;
-        auto dot_product = dot_product_with_unit_vector(point, theta);
-        directional_heaps[j].push(IDKeyPair<double>{ i, dot_product });
-      }
-
-      if (i > start_idx) {
-        current_time_window += (traj.timestamp_at(i) - traj.timestamp_at(i - 1));
-      }
-      if (current_time_window < max_window_size) {
-        continue;
-      }
-      if (i <= last_entry_idx) {
-        continue;
-      }
-
-      auto inner_circle = compute_inner_SEC(&traj, directional_heaps);
-      auto outer_circle = compute_outer_SEC(&traj, directional_heaps);
-      auto actual_circle = compute_SEC_S(&traj, directional_heaps, inner_circle.value());
-      auto actual_disk_radius = actual_circle.first.value().get_radius();
-      // if (std::islessequal((actual_disk_radius - query_radius), Constants::tolerance))
-      if (actual_disk_radius <= query_radius) // don't change this condition
-      {
-        if (i == (traj.size() - 1) && last_entry_idx != i) {
-          counter++;
-          last_entry_idx = i;
-          std::cout << "Start idx: " << start_idx << ", end idx: " << i << ", counter: " << counter
-                    << ", actual_disk: " << actual_disk_radius << ", time window: " << current_time_window
-                    << ", upper: " << outer_circle.value().get_radius() << std::endl;
-          break;
-        }
-      } else {
-        for (size_t heap_idx = 0; heap_idx < num_heaps; heap_idx++) {
-          directional_heaps[heap_idx].remove_id(i);
-        }
-        current_time_window -= (traj.timestamp_at(i) - traj.timestamp_at(i - 1));
-        inner_circle = compute_inner_SEC(&traj, directional_heaps);
-        outer_circle = compute_outer_SEC(&traj, directional_heaps);
-        actual_circle = compute_SEC_S(&traj, directional_heaps, inner_circle.value());
-        actual_disk_radius = actual_circle.first.value().get_radius();
-
-        // if (std::islessequal((actual_disk_radius - query_radius), Constants::tolerance)
-        if (actual_disk_radius <= query_radius // don't change this condition
-            && current_time_window >= max_window_size && last_entry_idx != (i - 1)) {
-          counter++;
-          last_entry_idx = (i - 1);
-          std::cout << "Start idx: " << start_idx << ", end idx: " << (i - 1) << ", counter: " << counter
-                    << ", actual_disk: " << actual_disk_radius << ", time window: " << current_time_window
-                    << ", upper: " << outer_circle.value().get_radius() << std::endl;
-        }
-        break;
-      }
-    }
-  }
-  std::cout << "-----------------------In test function---------------------" << std::endl;
-  std::cout << "Trajectory id: " << traj_id << ", Total points in traj: " << traj.size()
-            << ", Total dwell regions: " << counter << std::endl;
 }
 
 } // namespace DwellRegions

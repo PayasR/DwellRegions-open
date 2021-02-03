@@ -83,14 +83,6 @@ OnlineDwellRegionComputation::process_points_and_set_dwell_region_flag()
     }
     R_SEC_upper_bound = SEC_outer.value().get_radius();
 
-    // std::cout << "R values: " << R_SEC_lower_bound << "\t" << R_SEC_upper_bound << "\t";
-    // std::cout << "current_traj_idx: " << current_trajectory_idx
-    //           << "\t current_window_size: " << current_window_size << std::endl;
-    // std::cout << "Inner circle center: " << SEC_inner.value().get_center().x << " "
-    //           << SEC_inner.value().get_center().y << std::endl;
-    // std::cout << "Outer circle center: " << SEC_outer.value().get_center().x << " "
-    //           << SEC_outer.value().get_center().y << std::endl;
-
     // Sanity Check
     if (std::isgreater((R_SEC_lower_bound - R_SEC_upper_bound), Constants::tolerance)) {
       std::cerr << "ERROR: LOWER BOUND > UPPER BOUND!!" << std::endl;
@@ -115,8 +107,6 @@ OnlineDwellRegionComputation::process_points_and_set_dwell_region_flag()
 
         dwell_region_flag = true;
         query_perf_counters.num_query_answered_without_computing_SEC++;
-
-        // std::cout << "YES: Found a dwell region without computing SEC." << std::endl;
 
         // Compute the actual SEC_S, and the approximate dwell region using points on the SEC_S
         auto SEC_ring_points_pair = compute_SEC_S(trajectory_ptr, directional_heaps, SEC_inner.value());
@@ -156,8 +146,6 @@ OnlineDwellRegionComputation::process_points_and_set_dwell_region_flag()
         }
 
         auto SEC_S_disk = SEC_S.value();
-        // std::cout << "Actual disk: " << SEC_S_disk.get_center().x << " "
-        //           << SEC_S_disk.get_center().y << " " << SEC_S_disk.get_radius() << std::endl;
 
         // Query radius is greater than the radius of the disk or approximately equal to
         // disk, then we have a dwell region, no otherwise.
@@ -170,7 +158,6 @@ OnlineDwellRegionComputation::process_points_and_set_dwell_region_flag()
 
           dwell_region_flag = true;
 
-          // std::cout << "YES: Found a dwell region after computing SEC." << std::endl;
           auto dwell_region =
             get_approximate_dwell_region(query_radius, trajectory_points_on_SEC(SEC_S_disk, ring_points));
 

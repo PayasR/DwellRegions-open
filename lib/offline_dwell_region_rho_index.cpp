@@ -17,7 +17,7 @@ namespace DwellRegions {
 // Prepare and setup the bins of different radii
 // based on the number of radii bins
 void
-OfflineDwellRegionIndex::prepare_radii_bins()
+OfflineDwellRegionRhoIndex::prepare_radii_bins()
 {
   double width_of_radii_bins = (max_radius - min_radius) / (num_radii_bins - 1);
   double radius = min_radius;
@@ -33,7 +33,7 @@ OfflineDwellRegionIndex::prepare_radii_bins()
 // which will be used to compute the dwell regions
 // for the dwell region query
 void
-OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
+OfflineDwellRegionRhoIndex::process_trajectory_and_compute_bins(
   size_t trajectory_id,
   size_t radii_idx,
   std::vector<std::vector<RadiiBinEntry>>& current_bins)
@@ -64,10 +64,25 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
 
       // Add the difference between timestamps of current point and the previous point
       // to compute the current time window of the current subtrajectory
+      bool inconsistent_timestamp = false;
       if (current_point_idx > first_point_idx) {
         size_t prev_timestamp = trajectory_ptr->timestamp_at(current_point_idx - 1);
         size_t curr_timestamp = trajectory_ptr->timestamp_at(current_point_idx);
-        current_time_window += (curr_timestamp - prev_timestamp);
+        
+        if (curr_timestamp < prev_timestamp) {
+          inconsistent_timestamp = true;
+        }
+        else {
+          current_time_window += (curr_timestamp - prev_timestamp);
+        }
+      }
+
+      if (inconsistent_timestamp) {
+        // inconsistent timestamp, so terminate the current sub-trajectory, i.e.,
+        // move the first point of subtrajectory to the current point
+        current_point_idx--;
+        first_point_idx = current_point_idx;
+        break;
       }
 
       // At least three points are required in the window to compute a dwell region,
@@ -115,9 +130,7 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
       // Is upper bound > current radius? If yes, compute actual SEC_S;
       // and check SEC_S > current radius Otherwise, continue adding points from trajectory
 
-      // TODO: Argue about using the using the tolerances everywhere for floating point comparisons
-      // if (std::isgreater((R_SEC_upper_bound - current_radius), Constants::tolerance))
-      if (R_SEC_upper_bound > current_radius) // don't change this condition
+      if (R_SEC_upper_bound > current_radius)
       {
         auto SEC_ring_points_pair = compute_SEC_S(trajectory_ptr, directional_heaps, SEC_inner.value());
 
@@ -130,8 +143,7 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
 
         // If the radius of SEC_S is greater than current radius,
         // discard the last added point, and make an entry in radii bin for the subtrajectory,
-        // if (std::isgreater((SEC_S_disk.get_radius() - current_radius), Constants::tolerance))
-        if (SEC_S_disk.get_radius() > current_radius) // don't change this condition
+        if (SEC_S_disk.get_radius() > current_radius)
         {
           // Discard the last added point from the current window for the next radii_bin entry
           current_window_size--;
@@ -147,21 +159,18 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
           bool is_subtraj_current_radius_maximal = false;
           auto SEC_outer_subtraj = compute_outer_SEC(trajectory_ptr, directional_heaps);
           double SEC_upper_bound_subtraj = SEC_outer_subtraj.value().get_radius();
-          // if (std::islessequal((SEC_upper_bound_subtraj - current_radius), -Constants::tolerance))
-          if (SEC_upper_bound_subtraj <= current_radius) // don't change this condition
+          
+          if (SEC_upper_bound_subtraj <= current_radius)
           {
             is_subtraj_current_radius_maximal = true;
-            // std::cout << "Upper bound of subtrajectory: " << SEC_upper_bound_subtraj <<
-            // std::endl;
-          } else {
+          } 
+          else {
             auto SEC_inner_subtraj = compute_inner_SEC(trajectory_ptr, directional_heaps);
             auto SEC_S_subtraj = compute_SEC_S(trajectory_ptr, directional_heaps, SEC_inner_subtraj.value());
             double SEC_S_disk_subtraj = SEC_S_subtraj.first.value().get_radius();
-            // if (std::islessequal((SEC_S_disk_subtraj - current_radius), -Constants::tolerance)) {
-            if (SEC_S_disk_subtraj <= current_radius) { // don't change this condition
+            
+            if (SEC_S_disk_subtraj <= current_radius) { 
               is_subtraj_current_radius_maximal = true;
-              // std::cout << "Lower bound of subtrajectory: " << SEC_lower_bound_subtraj <<
-              // std::endl;
             }
           }
 
@@ -180,10 +189,6 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
             // Push the new radii_bin entry and update the last index of the last radii_bin entry
             current_bins[radii_idx].emplace_back(current_bin_entry);
             last_idx_of_last_bin_entry = last_point_in_window_idx;
-            /*std::cout << "Trajectory id: " << trajectory_id
-                      << ", First: " << first_point_idx << ", Last: " << last_point_in_window_idx
-                      << ", Duration: " << duration << std::endl;
-            std::cout << "Current bin size: " << current_bins[radii_idx].size() << std::endl;*/
           }
           break;
         }
@@ -197,7 +202,7 @@ OfflineDwellRegionIndex::process_trajectory_and_compute_bins(
 // Set the current trajectory, preprocess it, compute the bins for it
 // and update the radii_bins that contains subtrajectories from all trajectories
 void
-OfflineDwellRegionIndex::set_trajectory_and_update_radii_bins(Trajectory* traj, const size_t traj_idx)
+OfflineDwellRegionRhoIndex::set_trajectory_and_update_radii_bins(Trajectory* traj, const size_t traj_idx)
 {
   // Set the current trajectory
   trajectory_ptr = traj;
@@ -260,7 +265,7 @@ OfflineDwellRegionIndex::set_trajectory_and_update_radii_bins(Trajectory* traj, 
 // Preprocess all the trajectories in the full dataset
 // and compute the radii_bins for all trajectories
 void
-OfflineDwellRegionIndex::preprocess_trajectory_dataset(std::filesystem::path filename, std::string data_path)
+OfflineDwellRegionRhoIndex::preprocess_trajectory_dataset(std::filesystem::path filename, std::string data_path)
 {
   // Read Points from the file and add_point() to traj here...
   std::ifstream trajFile(filename, std::ios::in);
@@ -287,30 +292,21 @@ OfflineDwellRegionIndex::preprocess_trajectory_dataset(std::filesystem::path fil
     size_t trajectory_ID, num_points_in_trajectory;
     ss >> trajectory_ID >> num_points_in_trajectory;
 
-    /*std::string filestring = data_path + "GeoLifeDataByID/" + std::to_string(traj_idx) + ".txt";
-    auto file = std::filesystem::path(filestring);
-    std::ofstream trajByIdFile(file, std::ios::out);
-    trajByIdFile << num_points_in_trajectory << std::endl;*/
-
     // Populate the trajectory object with points from the file
     Trajectory traj;
     while (ss.good()) {
       double lon = 0.0, lat = 0.0;
       size_t timestamp = 0;
       ss >> lat >> lon >> timestamp;
-      /*if (timestamp > 0) {
-        trajByIdFile << lat << "\t" << lon << "\t" << timestamp << std::endl;
-      }*/
       traj.emplace_back(Point_from_lon_lat(lon, lat), timestamp);
     }
-    // trajByIdFile.close();
 
     if (is_outlier_trajectory(traj.at(0))) {
       continue;
     }
     set_trajectory_and_update_radii_bins(&traj, traj_idx);
-    if (traj_idx == 8)
-      break;
+    // if (traj_idx == 8)
+    //   break;
   }
 
   // Sort the subtrajectories in radii_bins by duration/ time_window
@@ -320,22 +316,8 @@ OfflineDwellRegionIndex::preprocess_trajectory_dataset(std::filesystem::path fil
               radii_bins_with_subtrajectories[idx].end(),
               RadiiBinEntryComparator());
 
-    /*std::cout << "------------------------------------------------------------------------------------------"
-              << std::endl;
-    std::cout << "Current radii bin: " << radii_bins[idx] << ", Size: " << radii_bins_with_subtrajectories[idx].size()
-              << std::endl;
-    for (size_t j = 0; j < radii_bins_with_subtrajectories[idx].size(); j++) {
-      std::cout << "Trajectory id: " << radii_bins_with_subtrajectories[idx][j].trajectory_id
-                << ", First: " << radii_bins_with_subtrajectories[idx][j].first_idx_subtraj
-                << ", Last: " << radii_bins_with_subtrajectories[idx][j].last_idx_subtraj
-                << ", Duration: " << radii_bins_with_subtrajectories[idx][j].duration_subtraj
-                << ", Next duration: " << radii_bins_with_subtrajectories[idx][j].duration_of_subtraj_in_next_bin_entry
-                << ", Next last index: "
-                << radii_bins_with_subtrajectories[idx][j].last_idx_of_subtraj_in_next_bin_entry << std::endl;
-    }*/
-
     int current_radius_bin = (int) (radii_bins[idx] * 10.0 + 0.5);
-    std::string index_string = data_path + "Index/" + std::to_string(num_radii_bins) + "_bins/" +
+    std::string index_string = data_path + "Rho_Index/" + std::to_string(num_radii_bins) + "_bins/" +
                              "radius_" + std::to_string(current_radius_bin) +
                              "_k_" + std::to_string(num_heaps) + ".txt";
     std::cout << "Writing index file: " << index_string << std::endl;
@@ -354,6 +336,5 @@ OfflineDwellRegionIndex::preprocess_trajectory_dataset(std::filesystem::path fil
   }
   auto end = clock();
   preprocess_time = (end - start) / (double) CLOCKS_PER_SEC;
-  //std::cout << "Preprocessing time: " << preprocess_time << " seconds" << std::endl;
 }
 } // namespace DwellRegions
