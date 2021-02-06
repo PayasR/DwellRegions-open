@@ -3,6 +3,8 @@
 Implementation for online and offline computation of dwell regions from trajectory data.
 Please see the accompanying paper https://ieeexplore.ieee.org/document/6341396/.
 
+You can find the GeoLife dataset [here](https://drive.google.com/file/d/12H5M1fzEv1RQczaEjX001ppx3rE4286A/view?usp=sharing).
+
 # Building code in this repository
 
 ```
